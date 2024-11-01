@@ -157,6 +157,8 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) {
 			newDbDriver = &drivers.Postgres{}
 		case drivers.DriverSqlite:
 			newDbDriver = &drivers.SQLite{}
+		case drivers.DriverSqlite:
+			newDbDriver = &drivers.SqlServer{}
 		}
 
 		err := newDbDriver.Connect(connection.URL)
