@@ -181,7 +181,7 @@ func (form *ConnectionForm) testConnection(connectionString string) {
 	case drivers.DriverSqlite:
 		db = &drivers.SQLite{}
 	case drivers.DriverSqlServer:
-		db = &drivers.MsSql{}
+		db = &drivers.SqlServer{}
 	}
 
 	err = db.TestConnection(connectionString)

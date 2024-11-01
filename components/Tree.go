@@ -310,7 +310,7 @@ func (tree *Tree) databasesToNodes(children map[string][]string, node *tview.Tre
 			childNode.SetColor(app.Styles.PrimaryTextColor)
 			if tree.DBDriver.GetProvider() == "sqlite3" {
 				childNode.SetReference(child)
-			} else if tree.DBDriver.GetProvider() == "postgres" {
+			} else if tree.DBDriver.GetProvider() == "postgres" || tree.DBDriver.GetProvider() == "sqlserver" {
 				childNode.SetReference(fmt.Sprintf("%s.%s.%s", nodeReference, key, child))
 			} else {
 				childNode.SetReference(fmt.Sprintf("%s.%s", key, child))

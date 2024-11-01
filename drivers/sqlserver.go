@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 
 	// import postgresql driver
@@ -24,7 +23,7 @@ type SqlServer struct {
 }
 
 const (
-	defaultPort = "1433"
+	defaultSqlServerPort = "1433"
 )
 
 func (db *SqlServer) TestConnection(urlstr string) error {
@@ -50,7 +49,7 @@ func (db *SqlServer) Connect(urlstr string) (err error) {
 }
 
 func (db *SqlServer) GetDatabases() (databases []string, err error) {
-	rows, err := db.Connection.Query("SELECT [name] FROM sys.databases WHERE [name] NOT IN('master', 'tempdb', 'model', 'msdb');")
+	rows, err := db.Connection.Query("SELECT [name] FROM sys.databases WHERE [name] NOT IN('master', 'tempdb', 'model', 'msdb') ORDER BY [name];")
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +92,7 @@ func (db *SqlServer) GetTables(database string) (tables map[string][]string, err
 		}
 	}()
 
-	query := "SELECT [TABLE_SCHEMA], [TABLE_NAME] FROM INFORMATION_SCHEMA.TABLES"
+	query := "SELECT [TABLE_NAME], [TABLE_SCHEMA] FROM INFORMATION_SCHEMA.TABLES ORDER BY [TABLE_SCHEMA], [TABLE_NAME];"
 	rows, err := db.Connection.Query(query, database)
 	if err != nil {
 		return nil, err
@@ -149,7 +148,7 @@ func (db *SqlServer) GetTableColumns(database, table string) (results [][]string
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
-	query := "SELECT [COLUMN_NAME] FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = $1 AND TABLE_NAME = $2 ORDER BY ORDINAL_POSITION"
+	query := "SELECT [COLUMN_NAME] FROM INFORMATION_SCHEMA.COLUMNS WHERE [TABLE_SCHEMA] = ? AND [TABLE_NAME] = ? ORDER BY [ORDINAL_POSITION];"
 	rows, err := db.Connection.Query(query, tableSchema, tableName)
 	if err != nil {
 		return nil, err
@@ -233,8 +232,8 @@ func (db *SqlServer) GetConstraints(database, table string) (constraints [][]str
             AND ccu.TABLE_SCHEMA = tc.TABLE_SCHEMA
         WHERE
             tc.CONSTRAINT_TYPE != 'FOREIGN KEY'
-			AND tc.TABLE_SCHEMA = $1
-            AND tc.TABLE_NAME = $2
+			AND tc.TABLE_SCHEMA = ?
+            AND tc.TABLE_NAME = ?;
             `, tableSchema, tableName)
 	if err != nil {
 		return nil, err
@@ -319,8 +318,8 @@ func (db *SqlServer) GetForeignKeys(database, table string) (foreignKeys [][]str
                     AND ccu.TABLE_SCHEMA = tc.TABLE_SCHEMA
         WHERE
             tc.CONSTRAINT_TYPE = 'FOREIGN KEY'
-          	AND tc.TABLE_SCHEMA = $1
-            AND tc.TABLE_NAME = $2
+          	AND tc.TABLE_SCHEMA = ?
+            AND tc.TABLE_NAME = ?;
   `, tableSchema, tableName)
 	if err != nil {
 		return nil, err
@@ -407,8 +406,8 @@ func (db *SqlServer) GetIndexes(database, table string) (indexes [][]string, err
         	INNER JOIN sys.schemas schem
         		ON schem.schema_id = tab.schema_id
         WHERE
-        	tab.name = '$2'
-        	AND schem.name = '$1'
+        	tab.name = ?
+        	AND schem.name = ?
             AND ind.is_primary_key = 0
             AND ind.is_unique = 0
             AND ind.is_unique_constraint = 0
@@ -418,7 +417,7 @@ func (db *SqlServer) GetIndexes(database, table string) (indexes [][]string, err
         	 ind.name,
         	 ind.index_id,
         	 ind_col.is_included_column,
-        	 ind_col.key_ordinal
+        	 ind_col.key_ordinal;
   `, tableSchema, tableName))
 	if err != nil {
 		return nil, err
@@ -491,6 +490,8 @@ func (db *SqlServer) GetRecords(database, table, where, sort string, offset, lim
 
 	formattedTableName := db.formatTableName(tableSchema, tableName)
 
+	isPaginationEnabled := offset > 0 || limit > 0
+
 	if limit == 0 {
 		limit = DefaultRowLimit
 	}
@@ -504,11 +505,12 @@ func (db *SqlServer) GetRecords(database, table, where, sort string, offset, lim
 
 	if sort != "" {
 		query += fmt.Sprintf(" ORDER BY %s", sort)
+	} else if isPaginationEnabled {
+		query += " ORDER BY (SELECT NULL)"
 	}
+	query += fmt.Sprintf(" OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", offset, limit)
 
-	query += " OFFSET $2 ROWS FETCH NEXT $1 ROWS ONLY"
-
-	paginatedRows, err := db.Connection.Query(query, limit, offset)
+	paginatedRows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -616,7 +618,7 @@ func (db *SqlServer) UpdateRecord(database, table, column, value, primaryKeyColu
 
 	query := "UPDATE "
 	query += formattedTableName
-	query += fmt.Sprintf(" SET [%s] = $1 WHERE [%s] = $2", column, primaryKeyColumnName)
+	query += fmt.Sprintf(" SET [%s] = ? WHERE [%s] = ?", column, primaryKeyColumnName)
 
 	_, err = db.Connection.Exec(query, value, primaryKeyValue)
 
@@ -667,7 +669,7 @@ func (db *SqlServer) DeleteRecord(database, table, primaryKeyColumnName, primary
 
 	query := "DELETE FROM "
 	query += formattedTableName
-	query += fmt.Sprintf(" WHERE [%s] = $1", primaryKeyColumnName)
+	query += fmt.Sprintf(" WHERE [%s] = ?", primaryKeyColumnName)
 
 	_, err = db.Connection.Exec(query, primaryKeyValue)
 
@@ -883,8 +885,8 @@ func (db *SqlServer) GetPrimaryKeyColumnNames(database, table string) (primaryKe
 			ON ccu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
 				AND ccu.TABLE_SCHEMA = tc.TABLE_SCHEMA
 	WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-		AND tc.TABLE_SCHEMA = $1
-		AND tc.TABLE_NAME = $2
+		AND tc.TABLE_SCHEMA = ?
+		AND tc.TABLE_NAME = ?
 	ORDER BY ccu.COLUMN_NAME
 	`, schemaName, tableName)
 	if err != nil {
@@ -932,23 +934,23 @@ func (db *SqlServer) SwitchDatabase(database string) error {
 	password, _ := parsedConn.User.Password()
 	host := parsedConn.Host
 	port := parsedConn.Port()
-	dbname := parsedConn.Path
+	parsedQuery := parsedConn.Query()
+	dbName := parsedQuery.Get("database")
 
-	if port == "" {
-		port = defaultPort
+	if dbName == "" {
+		dbName = database
 	}
 
-	if dbname == "" {
-		dbname = database
+	if port == "" {
+		port = defaultSqlServerPort
 	}
 
 	connection, err := sql.Open(
 		"sqlserver", fmt.Sprintf(
-			"sqlserver://%s:%d@%s:%d/?database=%s",
+			"sqlserver://%s:%s@%s:%s/?database=%s",
 			user, password,
 			host, port,
-			dbname
-		))
+			dbName))
 	if err != nil {
 		return err
 	}
