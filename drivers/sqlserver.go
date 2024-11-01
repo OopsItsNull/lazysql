@@ -148,7 +148,7 @@ func (db *SqlServer) GetTableColumns(database, table string) (results [][]string
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
-	query := "SELECT [COLUMN_NAME] FROM INFORMATION_SCHEMA.COLUMNS WHERE [TABLE_SCHEMA] = ? AND [TABLE_NAME] = ? ORDER BY [ORDINAL_POSITION];"
+	query := "SELECT [column_name], [data_type], [is_nullable], [column_default] FROM INFORMATION_SCHEMA.COLUMNS WHERE [TABLE_SCHEMA] = @p1 AND [TABLE_NAME] = @p2 ORDER BY [ORDINAL_POSITION];"
 	rows, err := db.Connection.Query(query, tableSchema, tableName)
 	if err != nil {
 		return nil, err
@@ -221,9 +221,9 @@ func (db *SqlServer) GetConstraints(database, table string) (constraints [][]str
 
 	rows, err := db.Connection.Query(`
         SELECT
-            tc.CONSTRAINT_NAME,
-            kcu.COLUMN_NAME,
-            tc.CONSTRAINT_TYPE
+            tc.constraint_name,
+            kcu.column_name,
+            tc.constraint_type
         FROM
             INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc
             JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
@@ -232,9 +232,9 @@ func (db *SqlServer) GetConstraints(database, table string) (constraints [][]str
             AND ccu.TABLE_SCHEMA = tc.TABLE_SCHEMA
         WHERE
             tc.CONSTRAINT_TYPE != 'FOREIGN KEY'
-			AND tc.TABLE_SCHEMA = ?
-            AND tc.TABLE_NAME = ?;
-            `, tableSchema, tableName)
+			AND tc.TABLE_SCHEMA = @p1
+            AND tc.TABLE_NAME = @p2;
+        `, tableSchema, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -304,8 +304,8 @@ func (db *SqlServer) GetForeignKeys(database, table string) (foreignKeys [][]str
 
 	rows, err := db.Connection.Query(`
         SELECT
-            tc.CONSTRAINT_NAME,
-            kcu.COLUMN_NAME,
+            tc.constraint_name,
+            kcu.column_name,
             ccu.TABLE_NAME AS foreign_table_name,
             ccu.COLUMN_NAME AS foreign_column_name
         FROM
@@ -318,9 +318,9 @@ func (db *SqlServer) GetForeignKeys(database, table string) (foreignKeys [][]str
                     AND ccu.TABLE_SCHEMA = tc.TABLE_SCHEMA
         WHERE
             tc.CONSTRAINT_TYPE = 'FOREIGN KEY'
-          	AND tc.TABLE_SCHEMA = ?
-            AND tc.TABLE_NAME = ?;
-  `, tableSchema, tableName)
+          	AND tc.TABLE_SCHEMA = @p1
+            AND tc.TABLE_NAME = @p2;
+        `, tableSchema, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +388,7 @@ func (db *SqlServer) GetIndexes(database, table string) (indexes [][]string, err
 	tableSchema := splitTableString[0]
 	tableName := splitTableString[1]
 
-	rows, err := db.Connection.Query(fmt.Sprintf(`
+	rows, err := db.Connection.Query(`
         SELECT
             ind.name AS [index_name],
             col.name AS [column_name],
@@ -406,8 +406,8 @@ func (db *SqlServer) GetIndexes(database, table string) (indexes [][]string, err
         	INNER JOIN sys.schemas schem
         		ON schem.schema_id = tab.schema_id
         WHERE
-        	tab.name = ?
-        	AND schem.name = ?
+        	tab.name = @p1
+        	AND schem.name = @p2
             AND ind.is_primary_key = 0
             AND ind.is_unique = 0
             AND ind.is_unique_constraint = 0
@@ -418,7 +418,7 @@ func (db *SqlServer) GetIndexes(database, table string) (indexes [][]string, err
         	 ind.index_id,
         	 ind_col.is_included_column,
         	 ind_col.key_ordinal;
-  `, tableSchema, tableName))
+        `, tableSchema, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -618,7 +618,7 @@ func (db *SqlServer) UpdateRecord(database, table, column, value, primaryKeyColu
 
 	query := "UPDATE "
 	query += formattedTableName
-	query += fmt.Sprintf(" SET [%s] = ? WHERE [%s] = ?", column, primaryKeyColumnName)
+	query += fmt.Sprintf(" SET [%s] = @p1 WHERE [%s] = @p2", column, primaryKeyColumnName)
 
 	_, err = db.Connection.Exec(query, value, primaryKeyValue)
 
@@ -669,7 +669,7 @@ func (db *SqlServer) DeleteRecord(database, table, primaryKeyColumnName, primary
 
 	query := "DELETE FROM "
 	query += formattedTableName
-	query += fmt.Sprintf(" WHERE [%s] = ?", primaryKeyColumnName)
+	query += fmt.Sprintf(" WHERE [%s] = @p1", primaryKeyColumnName)
 
 	_, err = db.Connection.Exec(query, primaryKeyValue)
 
@@ -885,8 +885,8 @@ func (db *SqlServer) GetPrimaryKeyColumnNames(database, table string) (primaryKe
 			ON ccu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
 				AND ccu.TABLE_SCHEMA = tc.TABLE_SCHEMA
 	WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-		AND tc.TABLE_SCHEMA = ?
-		AND tc.TABLE_NAME = ?
+		AND tc.TABLE_SCHEMA = @p1
+		AND tc.TABLE_NAME = @p2
 	ORDER BY ccu.COLUMN_NAME
 	`, schemaName, tableName)
 	if err != nil {
