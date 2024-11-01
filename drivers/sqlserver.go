@@ -942,16 +942,13 @@ func (db *SqlServer) SwitchDatabase(database string) error {
 		dbname = database
 	}
 
-	connectionUrl := &url.URL{
-		Scheme: "sqlserver",
-		User:   url.UserPassword(user, password),
-		Host:   fmt.Sprintf("%s:%d", host, port),
-	}
-	q := connectionUrl.Query()
-	q.Set("database", dbname)
-	connectionUrl.RawQuery = q.Encode()
-
-	connection, err := sql.Open("sqlserver", connectionUrl.String())
+	connection, err := sql.Open(
+		"sqlserver", fmt.Sprintf(
+			"sqlserver://%s:%d@%s:%d/?database=%s",
+			user, password,
+			host, port,
+			dbname
+		))
 	if err != nil {
 		return err
 	}
