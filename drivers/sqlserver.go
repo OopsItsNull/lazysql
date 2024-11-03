@@ -947,7 +947,7 @@ func (db *SqlServer) SwitchDatabase(database string) error {
 
 	connection, err := sql.Open(
 		"sqlserver", fmt.Sprintf(
-			"sqlserver://%s:%s@%s:%s/?database=%s",
+			"sqlserver://%s:%s@%s:%s/?app+name=lazysql&database=%s",
 			user, password,
 			host, port,
 			dbName))
