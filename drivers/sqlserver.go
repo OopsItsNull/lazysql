@@ -92,8 +92,8 @@ func (db *SqlServer) GetTables(database string) (tables map[string][]string, err
 		}
 	}()
 
-	query := "SELECT [TABLE_NAME], [TABLE_SCHEMA] FROM INFORMATION_SCHEMA.TABLES ORDER BY [TABLE_SCHEMA], [TABLE_NAME];"
-	rows, err := db.Connection.Query(query, database)
+	query := "SELECT [TABLE_NAME], [TABLE_SCHEMA] FROM INFORMATION_SCHEMA.TABLES WHERE [TABLE_TYPE] = 'BASE TABLE' ORDER BY [TABLE_SCHEMA], [TABLE_NAME];"
+	rows, err := db.Connection.Query(query)
 	if err != nil {
 		return nil, err
 	}
